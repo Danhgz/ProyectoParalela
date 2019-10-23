@@ -2,10 +2,10 @@
 
 #include <omp.h>
 #include <conio.h>
+#include <time.h>
 #include <fstream>
 #include <string>
 #include <utility>
-#include <random>
 #include <vector>
 #include <cmath>
 #include <iostream>
@@ -41,26 +41,23 @@ void cargarVectores(char* nombreArchivo, int n, int m, vector<vector<double>>& m
 }
 
 double generarDouble(int min, int max) {
-	double rand = 0.0;
-	default_random_engine generator;
-	uniform_real_distribution<double> distribution(min, max);
-	rand = distribution(generator);
-	return rand;
+	float random = ((float)rand()) / (float)RAND_MAX;
+	float diff = max - min;
+	float r = random * diff;
+	return min + r;
 }
 
 int generarInt(int min, int max) {
-	int rand = 0;
-	default_random_engine generator;
-	uniform_int_distribution<int> distribution(min, max);
-	rand = distribution(generator);
-	return rand;
+	int randm = 0;
+	randm = rand() % (max - min)+min;
+	return randm;
 }
 
 double calcularDistanciaEuclidiana(vector<double>& vec1, vector<double>& vec2) {
 	double distancia = 0.0;
 	int tam = vec1.size();
 	for (int i = 0; i < tam; ++i) {
-		distancia += (vec1[i] - vec2[i]) * (vec1[i] - vec2[i]);
+		distancia += abs(vec1[i] - vec2[i]);
 	}
 	return distancia;
 }
@@ -111,6 +108,7 @@ void probabilidadesPuntos(vector<vector<double>>& vectorDatos, vector<vector<dou
 	for (int i = 0; i < tamano; ++i) {
 		prob = l * calcularProb(vectorDatos[i], vectorCentroides, psi);
 		probabilidades.push_back(prob);
+		cout << prob <<endl;
 	}
 }
 
@@ -171,7 +169,7 @@ void reclusterKmeans2(vector<vector<double>>& vectorCentroides, vector<vector<do
 void kmeansParallelInit(vector<vector<double>>& vectorDatos, vector<vector<double>>& vectorCentroides, vector<vector<vector<double>>>& valoresCentroides, int hilos, int m, int k) {
 	vector<double> probabilidades; //las probabilidades de cada x en X de ser escogido como centroide
 	vector<vector<double>> vCentroidesPrime;
-	double l = k / 2;
+	double l = (double)k / 2;
 	double fCosto = 0.0;
 	int posicionR = generarInt(0, m - 1);
 	vectorCentroides.push_back(vectorDatos[posicionR]);
@@ -180,19 +178,18 @@ void kmeansParallelInit(vector<vector<double>>& vectorDatos, vector<vector<doubl
 	for (int i = 0; i < m; ++i) {
 		fCosto += calcDisMin(vectorDatos[i], vectorCentroides);
 	}
-
 	int contador = 0;
 	double escoger = 0.0; // para escoger el numero random entre 0-1 y elegir un centroide si es menor a una prob
 	for (int i = 0; i < 5; ++i) {
 		probabilidadesPuntos(vectorDatos, vectorCentroides, probabilidades, fCosto, l);
-# pragma omp parallel num_threads(hilos) shared(contador) private(escoger, posicionR)
+//# pragma omp parallel num_threads(hilos) shared(contador) private(escoger, posicionR)
 		{
 			while (contador < l) {
 				escoger = generarDouble(0, 1);
 				posicionR = generarInt(0, m - 1);
 				if (escoger < probabilidades[posicionR]) {
 					if (validarCentroide(vectorCentroides, vectorDatos[posicionR])) {
-# pragma omp critical
+//# pragma omp critical
 						{
 							vectorCentroides.push_back(vectorDatos[posicionR]);
 							++contador;
@@ -201,7 +198,7 @@ void kmeansParallelInit(vector<vector<double>>& vectorDatos, vector<vector<doubl
 				}
 			}
 			fCosto = 0;
-# pragma omp single //Critical?
+//# pragma omp single //Critical?
 			{
 				for (int i = 0; i < m; ++i) {
 					fCosto += calcDisMin(vectorDatos[i], vectorCentroides);
@@ -209,7 +206,7 @@ void kmeansParallelInit(vector<vector<double>>& vectorDatos, vector<vector<doubl
 			}
 			contador = 0;
 		}
-	}
+	} cout << "Mucho peirsh?";
 	//En teoria aqui ya se tienen los centroides iniciales, ahora hay que calcular pesos por centroide y luego recluster
 	/*
 	int posMin = 0;
@@ -233,7 +230,7 @@ void promediarGrupo(vector<vector<double>>& vectorGrupo, vector<double>& vectorP
 	vectorPromedio.assign((int)vectorPromedio.size(), 0);
 	for (int i = 0; i < tamGrupo; ++i) 
 	{
-		for (int j = 0; i < tamDato; ++i) {
+		for (int j = 0; j < tamDato; ++j) {
 			vectorPromedio[j] += vectorGrupo[i][j];
 		}
 	}
@@ -252,19 +249,19 @@ double algoritmoLloyd(vector<vector<double>>& vectorDatos, vector<vector<double>
 	}
 	double fCostoPrime = fCosto;
 	do {
-		puntosAsociadosC.clear();
-		puntosAsociadosC.resize(k);
 		fCosto = fCostoPrime;
-		for (int i = 0; i < puntosAsociadosC[i].size(); ++i) {
+		for (int i = 0; i < (int)puntosAsociadosC.size(); ++i) {
 			promediarGrupo(puntosAsociadosC[i], vectorCentroides[i]);
 		}
+		puntosAsociadosC.clear();
+		puntosAsociadosC.resize(k);
 		fCostoPrime = 0;
 		for (int i = 0; i < m; ++i) {
 			fCostoPrime += calcDisMin(vectorDatos[i], vectorCentroides);
 			posMin = calcMinPos(vectorDatos[i], vectorCentroides);
 			puntosAsociadosC[posMin].push_back(vectorDatos[i]);
 		}
-	} while ((fCosto - fCostoPrime) > eps);
+	} while (abs(fCosto - fCostoPrime) > eps);
 	return fCostoPrime;
 }
 
@@ -283,7 +280,7 @@ void escribirResultados(vector<vector<vector<double>>>& vGrupos, vector<vector<d
 			}
 		}
 		salida << endl<< "Datos:"<<endl;
-		for (int j = 0; j < vGrupos[i].size(); ++j) 
+		for (int j = 0; j < (int)vGrupos[i].size(); ++j) 
 		{
 			for (int k = 0; k < n; ++k) {
 				salida << vGrupos[i][j][k];
@@ -314,14 +311,15 @@ arg[4] = k (cantidad centroides)
 arg[5] = hilos
 */
 int main(int argc, char** argv) {
-	if (argc == 5) {
+	if (argc == 6) {
+		srand(time(0));
 		int n = atoi(argv[2]);
 		int m = atoi(argv[3]);
 		int k = atoi(argv[4]);
 		int hilos = atoi(argv[5]);
 		int procesadores = omp_get_num_procs();
 		hilos *= procesadores;
-		double eps = 1.0;
+		double eps = 250.0;
 		double fCosto = 0.0;
 		vector<vector<double>> datos(m, vector<double>(n));
 		vector<vector<double>> centroide;
@@ -330,6 +328,7 @@ int main(int argc, char** argv) {
 		imprimirVectores(n, m, datos);
 		auto ini = omp_get_wtime();
 		kmeansParallelInit(datos, centroide, valoresAsociadosC, hilos, m, k);
+		cout << "Aqui?";
 		fCosto = algoritmoLloyd(datos, centroide, valoresAsociadosC,  m, k, eps);
 		auto fin = omp_get_wtime();
 		escribirResultados(valoresAsociadosC,centroide, fCosto, (double)(fin-ini));
