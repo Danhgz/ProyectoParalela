@@ -41,10 +41,10 @@ void cargarVectores(char* nombreArchivo, int n, int m, vector<vector<double>>& m
 }
 
 double generarDouble(int min, int max) {
-	float random = ((float)rand()) / (float)RAND_MAX;
-	float diff = max - min;
-	float r = random * diff;
-	return min + r;
+	double random = ((double)rand()) / (double)RAND_MAX;
+	double diff = (double)max - (double)min;
+	double r = random * diff;
+	return (double)min + r;
 }
 
 int generarInt(int min, int max) {
@@ -108,7 +108,6 @@ void probabilidadesPuntos(vector<vector<double>>& vectorDatos, vector<vector<dou
 	for (int i = 0; i < tamano; ++i) {
 		prob = l * calcularProb(vectorDatos[i], vectorCentroides, psi);
 		probabilidades.push_back(prob);
-		cout << prob <<endl;
 	}
 }
 
@@ -206,7 +205,7 @@ void kmeansParallelInit(vector<vector<double>>& vectorDatos, vector<vector<doubl
 			}
 			contador = 0;
 		}
-	} cout << "Mucho peirsh?";
+	}
 	//En teoria aqui ya se tienen los centroides iniciales, ahora hay que calcular pesos por centroide y luego recluster
 	/*
 	int posMin = 0;
@@ -224,9 +223,11 @@ void kmeansParallelInit(vector<vector<double>>& vectorDatos, vector<vector<doubl
 	vectorCentroides.assign(centroidesFinales.begin(), centroidesFinales.end());
 	valoresCentroides.resize(vectorCentroides.size());
 }
-void promediarGrupo(vector<vector<double>>& vectorGrupo, vector<double>& vectorPromedio) {
+int promediarGrupo(vector<vector<double>>& vectorGrupo, vector<double>& vectorPromedio) {
 	int tamGrupo = vectorGrupo.size();
 	int tamDato = vectorGrupo[0].size();
+	vector<double> anterior(vectorPromedio);
+	int cambio = 1;
 	vectorPromedio.assign((int)vectorPromedio.size(), 0);
 	for (int i = 0; i < tamGrupo; ++i) 
 	{
@@ -235,13 +236,18 @@ void promediarGrupo(vector<vector<double>>& vectorGrupo, vector<double>& vectorP
 		}
 	}
 	for (int i = 0; i < tamDato; ++i) {
-		vectorPromedio[i] /= tamDato;
+		vectorPromedio[i] /= tamGrupo;
 	}
+	if (compararVectores(anterior, vectorPromedio)) {
+		cambio = 0;
+	}
+	return cambio;
 }
 
 double algoritmoLloyd(vector<vector<double>>& vectorDatos, vector<vector<double>>& vectorCentroides, vector<vector<vector<double>>>& puntosAsociadosC, int m, int k, double eps) {
 	int posMin = 0;
 	double fCosto = 0.0;
+	int centroidesAlterados;
 	for (int i = 0; i < m; ++i) {
 		fCosto += calcDisMin(vectorDatos[i], vectorCentroides);
 		posMin = calcMinPos(vectorDatos[i], vectorCentroides);
@@ -250,8 +256,9 @@ double algoritmoLloyd(vector<vector<double>>& vectorDatos, vector<vector<double>
 	double fCostoPrime = fCosto;
 	do {
 		fCosto = fCostoPrime;
+		centroidesAlterados = 0;
 		for (int i = 0; i < (int)puntosAsociadosC.size(); ++i) {
-			promediarGrupo(puntosAsociadosC[i], vectorCentroides[i]);
+			centroidesAlterados += promediarGrupo(puntosAsociadosC[i], vectorCentroides[i]);
 		}
 		puntosAsociadosC.clear();
 		puntosAsociadosC.resize(k);
@@ -261,13 +268,13 @@ double algoritmoLloyd(vector<vector<double>>& vectorDatos, vector<vector<double>
 			posMin = calcMinPos(vectorDatos[i], vectorCentroides);
 			puntosAsociadosC[posMin].push_back(vectorDatos[i]);
 		}
-	} while (abs(fCosto - fCostoPrime) > eps);
+	} while ( ((fCosto - fCostoPrime) > eps) && (centroidesAlterados != 0) );
 	return fCostoPrime;
 }
 
 void escribirResultados(vector<vector<vector<double>>>& vGrupos, vector<vector<double>>& centroides, double fCosto, double tPared) {
 	int cantGrupos = vGrupos.size();
-	int n = centroides.size();
+	int n = centroides[0].size();
 	ofstream salida;
 	salida.open("salida.csv");
 	for (int i = 0; i < cantGrupos; ++i) 
@@ -290,45 +297,46 @@ void escribirResultados(vector<vector<vector<double>>>& vGrupos, vector<vector<d
 			}
 			salida << endl;
 		}
-		cout << "\n\n\n";
+		salida << endl << endl;
 	}
 	salida << "Tiempo pared: "<< tPared <<"   Funcion de Costo: " << fCosto;
 	salida.close();
 }
-void imprimirVectores(int n, int m, vector<vector<double>>& datos) {
+/*void imprimirVectores(int n, int m, vector<vector<double>>& datos) {
 	for (int i = 0; i < m; i++) {
 		for (int j = 0; j < n; j++) {
 			cout << datos[i][j] << "\t";
 		}
 		cout << endl;
 	}
-}
+}*/
+
 /*
 arg[1] = archivo de entrada
 arg[2] = n (dimension datos)
 arg[3] = m (cantidad vectores)
 arg[4] = k (cantidad centroides)
 arg[5] = hilos
+arg[6] = Epsilon de parada
 */
 int main(int argc, char** argv) {
-	if (argc == 6) {
+	if (argc == 7) {
 		srand(time(0));
 		int n = atoi(argv[2]);
 		int m = atoi(argv[3]);
 		int k = atoi(argv[4]);
 		int hilos = atoi(argv[5]);
+		double eps = atof(argv[6]);
 		int procesadores = omp_get_num_procs();
 		hilos *= procesadores;
-		double eps = 250.0;
 		double fCosto = 0.0;
 		vector<vector<double>> datos(m, vector<double>(n));
 		vector<vector<double>> centroide;
 		vector<vector<vector<double>>> valoresAsociadosC (k);
 		cargarVectores(argv[1], n, m, datos);
-		imprimirVectores(n, m, datos);
+		//imprimirVectores(n, m, datos);
 		auto ini = omp_get_wtime();
 		kmeansParallelInit(datos, centroide, valoresAsociadosC, hilos, m, k);
-		cout << "Aqui?";
 		fCosto = algoritmoLloyd(datos, centroide, valoresAsociadosC,  m, k, eps);
 		auto fin = omp_get_wtime();
 		escribirResultados(valoresAsociadosC,centroide, fCosto, (double)(fin-ini));
